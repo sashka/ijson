@@ -71,19 +71,22 @@ def parse_value(f):
     elif char == '[':
         for event in parse_array(f):
             yield event
+    elif char == '{':
+        for event in parse_object(f):
+            yield event
     else:
         raise errors.JSONError('Unexpected symbol')
 
 def parse_string(f):
-    result = u''
+    result = ''
     while True:
         char = f.read(1)
         if not char:
-            raise StopIteration
+            raise errors.IncompleteJSONError()
         if char == '"':
             break
         result += char
-    return result
+    return result.decode('unicode-escape')
 
 def parse_array(f):
     yield ('start_array', None)
@@ -99,6 +102,25 @@ def parse_array(f):
             if char != ',':
                 raise errors.JSONError('Unexpected symbol')
     yield ('end_array', None)
+
+def parse_object(f):
+    yield ('start_map', None)
+    while True:
+        char = f.nextchar()
+        if char != '"':
+            raise errors.JSONError('Unexpected symbol')
+        yield ('map_key', parse_string(f))
+        char = f.nextchar()
+        if char != ':':
+            raise errors.JSONError('Unexpected symbol')
+        for event in parse_value(f):
+            yield event
+        char = f.nextchar()
+        if char == '}':
+            break
+        if char != ',':
+            raise errors.JSONError('Unexpected symbol')
+    yield ('end_map', None)
 
 def basic_parse(f):
     f = Reader(f)
