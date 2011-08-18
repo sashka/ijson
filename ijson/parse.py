@@ -3,6 +3,7 @@ from ctypes import Structure, c_uint, c_ubyte, c_int, c_long, c_double, \
 from decimal import Decimal
 
 from ijson.lib import yajl
+from ijson import errors
 
 C_EMPTY = CFUNCTYPE(c_int, c_void_p)
 C_INT = CFUNCTYPE(c_int, c_void_p, c_int)
@@ -53,12 +54,6 @@ YAJL_CANCELLED = 1
 YAJL_INSUFFICIENT_DATA = 2
 YAJL_ERROR = 3
 
-class JSONError(Exception):
-    pass
-
-class IncompleteJSONError(JSONError):
-    def __init__(self):
-        super(IncompleteJSONError, self).__init__('Incomplete or empty JSON data')
 
 def basic_parse(f, allow_comments=False, check_utf8=False, buf_size=64 * 1024):
     '''
@@ -108,10 +103,10 @@ def basic_parse(f, allow_comments=False, check_utf8=False, buf_size=64 * 1024):
                 perror = yajl.yajl_get_error(handle, 1, buffer, len(buffer))
                 error = cast(perror, c_char_p).value
                 yajl.yajl_free_error(handle, perror)
-                raise JSONError(error)
+                raise errors.JSONError(error)
             if not buffer and not events:
                 if result == YAJL_INSUFFICIENT_DATA:
-                    raise IncompleteJSONError()
+                    raise errors.IncompleteJSONError()
                 break
 
             for event in events:
@@ -119,6 +114,8 @@ def basic_parse(f, allow_comments=False, check_utf8=False, buf_size=64 * 1024):
             events = []
     finally:
         yajl.yajl_free(handle)
+
+from pyparse import basic_parse
 
 def parse(*args, **kwargs):
     '''
