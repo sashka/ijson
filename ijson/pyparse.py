@@ -85,6 +85,8 @@ def parse_string(f):
             raise errors.IncompleteJSONError()
         if char == '"':
             break
+        if char == '\\':
+            char += f.read(1)
         result += char
     return result.decode('unicode-escape')
 

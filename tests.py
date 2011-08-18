@@ -7,11 +7,12 @@ import threading
 from ijson import parse, basic_parse, JSONError, IncompleteJSONError, ObjectBuilder, items
 
 
-JSON = '''
+JSON = r'''
 {
   "docs": [
     {
       "string": "\u0441\u0442\u0440\u043e\u043a\u0430",
+      "escaped": "\"escaped\ncharacters\\",
       "null": null,
       "boolean": false,
       "integer": 0,
@@ -46,6 +47,8 @@ class Parse(unittest.TestCase):
                     ('start_map', None),
                         ('map_key', 'string'),
                         ('string', u'строка'),
+                        ('map_key', 'escaped'),
+                        ('string', u'"escaped\ncharacters\\'),
                         ('map_key', 'null'),
                         ('null', None),
                         ('map_key', 'boolean'),
@@ -131,6 +134,7 @@ class Builder(unittest.TestCase):
             'docs': [
                 {
                    'string': u'строка',
+                   'escaped': u'"escaped\ncharacters\\',
                    'null': None,
                    'boolean': False,
                    'integer': 0,
@@ -163,12 +167,12 @@ class Builder(unittest.TestCase):
             {'key': 'value'},
             None,
         ])
-        
+
 class FuncThread(threading.Thread):
     def __init__(self, func):
         super(FuncThread, self).__init__()
         self.func = func
-        
+
     def run(self):
         self.func()
 
