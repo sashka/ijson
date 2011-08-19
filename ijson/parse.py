@@ -1,121 +1,140 @@
-from ctypes import Structure, c_uint, c_ubyte, c_int, c_long, c_double, \
-                   c_void_p, c_char_p, CFUNCTYPE, POINTER, byref, string_at, cast
 from decimal import Decimal
 
-from ijson.lib import yajl
-from ijson import errors
 
-C_EMPTY = CFUNCTYPE(c_int, c_void_p)
-C_INT = CFUNCTYPE(c_int, c_void_p, c_int)
-C_LONG = CFUNCTYPE(c_int, c_void_p, c_long)
-C_DOUBLE = CFUNCTYPE(c_int, c_void_p, c_double)
-C_STR = CFUNCTYPE(c_int, c_void_p, POINTER(c_ubyte), c_uint)
+class JSONError(Exception):
+    pass
 
-def number(value):
-    '''
-    Helper function casting a string that represents any Javascript number
-    into appropriate Python value: either int or Decimal.
-    '''
-    try:
-        return int(value)
-    except ValueError:
-        return Decimal(value)
+class IncompleteJSONError(JSONError):
+    def __init__(self):
+        super(IncompleteJSONError, self).__init__('Incomplete or empty JSON data')
 
-_callback_data = [
-    # Mapping of JSON parser events to callback C types and value converters.
-    # Used to define the Callbacks structure and actual callback functions
-    # inside the parse function.
-    ('null', C_EMPTY, lambda: None),
-    ('boolean', C_INT, lambda v: bool(v)),
-    # "integer" and "double" aren't actually yielded by yajl since "number"
-    # takes precedence if defined
-    ('integer', C_LONG, lambda v, l: int(string_at(v, l))),
-    ('double', C_DOUBLE, lambda v, l: float(string_at(v, l))),
-    ('number', C_STR, lambda v, l: number(string_at(v, l))),
-    ('string', C_STR, lambda v, l: string_at(v, l).decode('utf-8')),
-    ('start_map', C_EMPTY, lambda: None),
-    ('map_key', C_STR, lambda v, l: string_at(v, l)),
-    ('end_map', C_EMPTY, lambda: None),
-    ('start_array', C_EMPTY, lambda: None),
-    ('end_array', C_EMPTY, lambda: None),
-]
+class Reader(object):
+    def __init__(self, f):
+        self.f = f
+        self.retchar = ''
 
-class Callbacks(Structure):
-    _fields_ = [(name, type) for name, type, func in _callback_data]
+    def read(self, *args):
+        if not self.retchar:
+            return self.f.read(*args)
+        else:
+            if args:
+                args = list(args)
+                args[0] -= 1
+            retchar, self.retchar = self.retchar, ''
+            return retchar + self.f.read(*args)
 
-class Config(Structure):
-    _fields_ = [
-        ("allowComments", c_uint),
-        ("checkUTF8", c_uint)
-    ]
+    def pushchar(self, char):
+        assert self.retchar == ''
+        self.retchar = char
 
-YAJL_OK = 0
-YAJL_CANCELLED = 1
-YAJL_INSUFFICIENT_DATA = 2
-YAJL_ERROR = 3
-
-
-def basic_parse(f, allow_comments=False, check_utf8=False, buf_size=64 * 1024):
-    '''
-    An iterator returning events from a JSON being parsed. This basic parser
-    doesn't maintain any context and just returns parser events from an
-    underlying library, converting them into Python native data types.
-
-    Parameters:
-
-    - f: a readable file-like object with JSON input
-    - allow_comments: tells parser to allow comments in JSON input
-    - check_utf8: if True, parser will cause an error if input is invalid utf-8
-    - buf_size: a size of an input buffer
-
-    Events returned from parser are pairs of (event type, value) and can be as
-    follows:
-
-        ('null', None)
-        ('boolean', <True or False>)
-        ('number', <int or Decimal>)
-        ('string', <unicode>)
-        ('map_key', <str>)
-        ('start_map', None)
-        ('end_map', None)
-        ('start_array', None)
-        ('end_array', None)
-    '''
-    events = []
-
-    def callback(event, func_type, func):
-        def c_callback(context, *args):
-            events.append((event, func(*args)))
-            return 1
-        return func_type(c_callback)
-
-    callbacks = Callbacks(*[callback(*data) for data in _callback_data])
-    config = Config(allow_comments, check_utf8)
-    handle = yajl.yajl_alloc(byref(callbacks), byref(config), None, None)
-    try:
+    def nextchar(self):
         while True:
-            buffer = f.read(buf_size)
-            if buffer:
-                result = yajl.yajl_parse(handle, buffer, len(buffer))
+            char = self.read(1)
+            if not char:
+                raise IncompleteJSONError()
+            if char != '\t' and char != '\n' and char != '\r' and char != ' ':
+                return char
+
+def parse_value(f):
+    char = f.nextchar()
+    if char == 'n':
+        if f.read(3) != 'ull':
+            raise JSONError('Unexpected symbol')
+        yield ('null', None)
+    elif char == 't':
+        if f.read(3) != 'rue':
+            raise JSONError('Unexpected symbol')
+        yield ('boolean', True)
+    elif char == 'f':
+        if f.read(4) != 'alse':
+            raise JSONError('Unexpected symbol')
+        yield ('boolean', False)
+    elif char == '-' or ('0' <= char <= '9'):
+        number = char
+        is_float = False
+        while True:
+            char = f.read(1)
+            if '0' <= char <= '9':
+                number += char
+            elif char == '.':
+                if is_float: # another '.'
+                    raise JSONError('Unexpected symbol')
+                is_float = True
+                number += char
             else:
-                result = yajl.yajl_parse_complete(handle)
-            if result == YAJL_ERROR:
-                perror = yajl.yajl_get_error(handle, 1, buffer, len(buffer))
-                error = cast(perror, c_char_p).value
-                yajl.yajl_free_error(handle, perror)
-                raise errors.JSONError(error)
-            if not buffer and not events:
-                if result == YAJL_INSUFFICIENT_DATA:
-                    raise errors.IncompleteJSONError()
+                f.pushchar(char)
                 break
+        if number == '-':
+            raise JSONError('Unexpected symbol')
+        yield ('number', Decimal(number) if is_float else int(number))
+    elif char == '"':
+        yield ('string', parse_string(f))
+    elif char == '[':
+        for event in parse_array(f):
+            yield event
+    elif char == '{':
+        for event in parse_object(f):
+            yield event
+    else:
+        raise JSONError('Unexpected symbol')
 
-            for event in events:
+def parse_string(f):
+    result = ''
+    while True:
+        char = f.read(1)
+        if not char:
+            raise IncompleteJSONError()
+        if char == '"':
+            break
+        if char == '\\':
+            char += f.read(1)
+        result += char
+    return result.decode('unicode-escape')
+
+def parse_array(f):
+    yield ('start_array', None)
+    char = f.nextchar()
+    if char != ']':
+        f.pushchar(char)
+        while True:
+            for event in parse_value(f):
                 yield event
-            events = []
-    finally:
-        yajl.yajl_free(handle)
+            char = f.nextchar()
+            if char == ']':
+                break
+            if char != ',':
+                raise JSONError('Unexpected symbol')
+    yield ('end_array', None)
 
-from pyparse import basic_parse
+def parse_object(f):
+    yield ('start_map', None)
+    while True:
+        char = f.nextchar()
+        if char != '"':
+            raise JSONError('Unexpected symbol')
+        yield ('map_key', parse_string(f))
+        char = f.nextchar()
+        if char != ':':
+            raise JSONError('Unexpected symbol')
+        for event in parse_value(f):
+            yield event
+        char = f.nextchar()
+        if char == '}':
+            break
+        if char != ',':
+            raise JSONError('Unexpected symbol')
+    yield ('end_map', None)
+
+def basic_parse(f):
+    f = Reader(f)
+    for value in parse_value(f):
+        yield value
+    try:
+        f.nextchar()
+    except IncompleteJSONError:
+        pass
+    else:
+        raise JSONError('Additional data')
 
 def parse(*args, **kwargs):
     '''
