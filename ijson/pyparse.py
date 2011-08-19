@@ -4,9 +4,6 @@ from decimal import Decimal
 from ijson import errors
 
 
-WHITESPACE = ('\t', '\n', '\r', ' ')
-
-
 class Reader(object):
     def __init__(self, f):
         self.f = f
@@ -31,7 +28,7 @@ class Reader(object):
             char = self.read(1)
             if not char:
                 raise errors.IncompleteJSONError()
-            if char not in WHITESPACE:
+            if char != '\t' and char != '\n' and char != '\r' and char != ' ':
                 return char
 
 def parse_value(f):
