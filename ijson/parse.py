@@ -5,7 +5,7 @@ import re
 BUFSIZE = 64 * 1024
 NONWS = re.compile(r'\S')
 STRTERM = re.compile(r'["\\]')
-NUMTERM = re.compile(r'[^0-9\.]|$')
+NUMTERM = re.compile(r'[^0-9\.]')
 
 
 class JSONError(Exception):
@@ -71,11 +71,14 @@ class Reader(object):
                     self.pos = pos + len(terminator) if eatterm else pos
                     return str(result)
             else:
-                result.extend(self.buffer)
+                result.extend(self.buffer[self.pos:])
                 self.buffer = bytearray(self.f.read(BUFSIZE))
                 self.pos = 0
                 if not self.buffer:
-                    raise IncompleteJSONError()
+                    if eatterm:
+                        raise IncompleteJSONError()
+                    else:
+                        return str(result)
 
 def parse_value(f):
     char = f.nextchar()
