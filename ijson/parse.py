@@ -52,22 +52,28 @@ class Reader(object):
             if not len(self.buffer):
                 raise IncompleteJSONError()
 
-    def readuntil(self, pattern):
+    def readuntil(self, pattern, escape=None):
         result = bytearray()
-        terminator = None
         while True:
             match = pattern.search(self.buffer, self.pos)
             if match:
-                terminator = chr(self.buffer[match.start()])
-                result.extend(self.buffer[self.pos:match.start()])
-                self.pos = match.start() + 1
-                break
-            result.extend(self.buffer)
-            self.buffer = bytearray(self.f.read(BUFSIZE))
-            self.pos = 0
-            if not self.buffer:
-                break
-        return str(result), terminator
+                pos = match.start()
+                terminator = chr(self.buffer[pos])
+                if terminator == escape:
+                    if len(self.buffer) < pos + 2:
+                        raise IncompleteJSONError()
+                    result.extend(self.buffer[self.pos:pos + 2])
+                    self.pos = pos + 2
+                else:
+                    result.extend(self.buffer[self.pos:pos])
+                    self.pos = pos + 1
+                    return str(result)
+            else:
+                result.extend(self.buffer)
+                self.buffer = bytearray(self.f.read(BUFSIZE))
+                self.pos = 0
+                if not self.buffer:
+                    raise IncompleteJSONError()
 
 def parse_value(f):
     char = f.nextchar()
@@ -114,16 +120,7 @@ def parse_value(f):
         raise JSONError('Unexpected symbol')
 
 def parse_string(f):
-    result = ''
-    while True:
-        chunk, terminator = f.readuntil(STRTERM)
-        if not terminator:
-            raise IncompleteJSONError()
-        result += chunk
-        if terminator == '"':
-            break
-        if terminator == '\\':
-            result += terminator + f.read(1)
+    result = f.readuntil(STRTERM, '\\')
     return result.decode('unicode-escape')
 
 def parse_array(f):
