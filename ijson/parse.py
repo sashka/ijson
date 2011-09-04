@@ -39,8 +39,9 @@ class Reader(object):
             self.pos = over
             return result
 
-    def pushchar(self, char):
-        self.buffer.insert(self.pos, char)
+    def retract(self):
+        self.pos -= 1
+        assert self.pos >= 0
 
     def nextchar(self):
         while True:
@@ -116,7 +117,7 @@ def parse_array(f):
     yield ('start_array', None)
     char = f.nextchar()
     if char != ']':
-        f.pushchar(char)
+        f.retract()
         while True:
             for event in parse_value(f):
                 yield event
