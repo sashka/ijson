@@ -1,4 +1,10 @@
 from decimal import Decimal
+import re
+
+
+BUFSIZE = 64 * 1024
+NONWS = re.compile(r'\S')
+STRTERM = re.compile(r'["\\]')
 
 
 class JSONError(Exception):
@@ -11,29 +17,57 @@ class IncompleteJSONError(JSONError):
 class Reader(object):
     def __init__(self, f):
         self.f = f
-        self.retchar = ''
+        self.buffer = bytearray()
+        self.pos = 0
 
-    def read(self, *args):
-        if not self.retchar:
-            return self.f.read(*args)
-        else:
-            if args:
-                args = list(args)
-                args[0] -= 1
-            retchar, self.retchar = self.retchar, ''
-            return retchar + self.f.read(*args)
+    def read(self, count=None):
+        if count is None:
+            result = str(sef.buffer[self.pos:] + self.f.read())
+            self.buffer = bytearray()
+            self.pos = 0
+            return result
+        if count <= len(self.buffer) - self.pos:
+            start = self.pos
+            self.pos += count
+            return str(self.buffer[start:self.pos])
+        if count > len(self.buffer) - self.pos:
+            over = count - (len(self.buffer) - self.pos)
+            self.newbuffer = bytearray(self.f.read(BUFSIZE))
+            result = str(self.buffer[self.pos:] + self.newbuffer[:over])
+            self.buffer = self.newbuffer
+            self.pos = over
+            return result
 
     def pushchar(self, char):
-        assert self.retchar == ''
-        self.retchar = char
+        self.buffer.insert(self.pos, char)
 
     def nextchar(self):
         while True:
-            char = self.read(1)
-            if not char:
+            match = NONWS.search(self.buffer, self.pos)
+            if match:
+                self.pos = match.start() + 1
+                return chr(self.buffer[match.start()])
+            self.buffer = bytearray(self.f.read(BUFSIZE))
+            self.pos = 0
+            if not len(self.buffer):
                 raise IncompleteJSONError()
-            if char != '\t' and char != '\n' and char != '\r' and char != ' ':
-                return char
+
+    def readuntil(self, pattern):
+        result = bytearray()
+        terminator = None
+        while True:
+            match = pattern.search(self.buffer, self.pos)
+            if match:
+                terminator = chr(self.buffer[match.start()])
+                result.extend(self.buffer[self.pos:match.start()])
+                self.pos = match.start() + 1
+                break
+            result.extend(self.buffer)
+            self.buffer = bytearray(self.f.read(BUFSIZE))
+            self.pos = 0
+            if not self.buffer:
+                break
+        return str(result), terminator
 
 def parse_value(f):
     char = f.nextchar()
@@ -62,7 +96,8 @@ def parse_value(f):
                 is_float = True
                 number += char
             else:
-                f.pushchar(char)
+                if char:
+                    f.pushchar(char)
                 break
         if number == '-':
             raise JSONError('Unexpected symbol')
@@ -81,14 +116,14 @@ def parse_value(f):
 def parse_string(f):
     result = ''
     while True:
-        char = f.read(1)
-        if not char:
+        chunk, terminator = f.readuntil(STRTERM)
+        if not terminator:
             raise IncompleteJSONError()
-        if char == '"':
+        result += chunk
+        if terminator == '"':
             break
-        if char == '\\':
-            char += f.read(1)
-        result += char
+        if terminator == '\\':
+            result += terminator + f.read(1)
     return result.decode('unicode-escape')
 
 def parse_array(f):
