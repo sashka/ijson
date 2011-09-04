@@ -5,6 +5,7 @@ import re
 BUFSIZE = 64 * 1024
 NONWS = re.compile(r'\S')
 STRTERM = re.compile(r'["\\]')
+NUMTERM = re.compile(r'[^0-9\.]|$')
 
 
 class JSONError(Exception):
@@ -52,13 +53,13 @@ class Reader(object):
             if not len(self.buffer):
                 raise IncompleteJSONError()
 
-    def readuntil(self, pattern, escape=None):
+    def readuntil(self, pattern, escape=None, eatterm=False):
         result = bytearray()
         while True:
             match = pattern.search(self.buffer, self.pos)
             if match:
                 pos = match.start()
-                terminator = chr(self.buffer[pos])
+                terminator = self.buffer[pos:pos + 1]
                 if terminator == escape:
                     if len(self.buffer) < pos + 2:
                         raise IncompleteJSONError()
@@ -66,7 +67,7 @@ class Reader(object):
                     self.pos = pos + 2
                 else:
                     result.extend(self.buffer[self.pos:pos])
-                    self.pos = pos + 1
+                    self.pos = pos + len(terminator) if eatterm else pos
                     return str(result)
             else:
                 result.extend(self.buffer)
@@ -90,24 +91,12 @@ def parse_value(f):
             raise JSONError('Unexpected symbol')
         yield ('boolean', False)
     elif char == '-' or ('0' <= char <= '9'):
-        number = char
-        is_float = False
-        while True:
-            char = f.read(1)
-            if '0' <= char <= '9':
-                number += char
-            elif char == '.':
-                if is_float: # another '.'
-                    raise JSONError('Unexpected symbol')
-                is_float = True
-                number += char
-            else:
-                if char:
-                    f.pushchar(char)
-                break
-        if number == '-':
+        number = char + f.readuntil(NUMTERM)
+        try:
+            number = Decimal(number) if '.' in number else int(number)
+        except ValueError:
             raise JSONError('Unexpected symbol')
-        yield ('number', Decimal(number) if is_float else int(number))
+        yield ('number', number)
     elif char == '"':
         yield ('string', parse_string(f))
     elif char == '[':
@@ -120,7 +109,7 @@ def parse_value(f):
         raise JSONError('Unexpected symbol')
 
 def parse_string(f):
-    result = f.readuntil(STRTERM, '\\')
+    result = f.readuntil(STRTERM, '\\', eatterm=True)
     return result.decode('unicode-escape')
 
 def parse_array(f):
