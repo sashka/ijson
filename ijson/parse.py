@@ -21,17 +21,12 @@ class Reader(object):
         self.buffer = ''
         self.pos = 0
 
-    def read(self, count=None):
-        if count is None:
-            result = str(sef.buffer[self.pos:] + self.f.read())
-            self.buffer = ''
-            self.pos = 0
-            return result
+    def read(self, count):
         if count <= len(self.buffer) - self.pos:
             start = self.pos
             self.pos += count
             return self.buffer[start:self.pos]
-        if count > len(self.buffer) - self.pos:
+        else:
             over = count - (len(self.buffer) - self.pos)
             self.newbuffer = self.f.read(BUFSIZE)
             result = self.buffer[self.pos:] + self.newbuffer[:over]
