@@ -2,7 +2,7 @@ from decimal import Decimal
 import re
 
 
-BUFSIZE = 64 * 1024
+BUFSIZE = 4 * 1024
 NONWS = re.compile(r'\S')
 STRTERM = re.compile(r'["\\]')
 NUMTERM = re.compile(r'[^0-9\.]')
