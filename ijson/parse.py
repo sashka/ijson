@@ -18,23 +18,23 @@ class IncompleteJSONError(JSONError):
 class Reader(object):
     def __init__(self, f):
         self.f = f
-        self.buffer = bytearray()
+        self.buffer = ''
         self.pos = 0
 
     def read(self, count=None):
         if count is None:
             result = str(sef.buffer[self.pos:] + self.f.read())
-            self.buffer = bytearray()
+            self.buffer = ''
             self.pos = 0
             return result
         if count <= len(self.buffer) - self.pos:
             start = self.pos
             self.pos += count
-            return str(self.buffer[start:self.pos])
+            return self.buffer[start:self.pos]
         if count > len(self.buffer) - self.pos:
             over = count - (len(self.buffer) - self.pos)
-            self.newbuffer = bytearray(self.f.read(BUFSIZE))
-            result = str(self.buffer[self.pos:] + self.newbuffer[:over])
+            self.newbuffer = self.f.read(BUFSIZE)
+            result = self.buffer[self.pos:] + self.newbuffer[:over]
             self.buffer = self.newbuffer
             self.pos = over
             return result
@@ -48,14 +48,14 @@ class Reader(object):
             match = NONWS.search(self.buffer, self.pos)
             if match:
                 self.pos = match.start() + 1
-                return chr(self.buffer[match.start()])
-            self.buffer = bytearray(self.f.read(BUFSIZE))
+                return self.buffer[match.start()]
+            self.buffer = self.f.read(BUFSIZE)
             self.pos = 0
             if not len(self.buffer):
                 raise IncompleteJSONError()
 
     def readuntil(self, pattern, escape=None, eatterm=False):
-        result = bytearray()
+        result = []
         while True:
             match = pattern.search(self.buffer, self.pos)
             if match:
@@ -64,21 +64,21 @@ class Reader(object):
                 if terminator == escape:
                     if len(self.buffer) < pos + 2:
                         raise IncompleteJSONError()
-                    result.extend(self.buffer[self.pos:pos + 2])
+                    result.append(self.buffer[self.pos:pos + 2])
                     self.pos = pos + 2
                 else:
-                    result.extend(self.buffer[self.pos:pos])
+                    result.append(self.buffer[self.pos:pos])
                     self.pos = pos + len(terminator) if eatterm else pos
-                    return str(result)
+                    return ''.join(result)
             else:
-                result.extend(self.buffer[self.pos:])
-                self.buffer = bytearray(self.f.read(BUFSIZE))
+                result.append(self.buffer[self.pos:])
+                self.buffer = self.f.read(BUFSIZE)
                 self.pos = 0
                 if not self.buffer:
                     if eatterm:
                         raise IncompleteJSONError()
                     else:
-                        return str(result)
+                        return ''.join(result)
 
 def parse_value(f):
     char = f.nextchar()
