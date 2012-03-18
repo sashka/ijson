@@ -1,0 +1,5 @@
+python-ijson (0.8.0-1) unstable; urgency=low
+
+  * Initial debianization.
+
+ -- Alexander Saltanov <asd@mokote.com>  Mon, 19 Mar 2012 01:51:55 +0400

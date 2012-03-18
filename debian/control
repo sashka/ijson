@@ -1,0 +1,18 @@
+Source: python-ijson
+Section: python
+Priority: optional
+Maintainer: Alexander Saltanov <asd@mokote.com>
+XS-Python-Version: >= 2.6
+Build-Depends: debhelper (>= 7.0.50), python-all-dev (>= 2.6), libyajl-dev (< 2.0)
+Standards-Version: 3.9.1
+Homepage: https://launchpad.net/ijson
+Vcs-Git: git://github.com/sashka/ijson.git
+Vcs-Browser: https://github.com/sashka/ijson
+
+Package: python-ijson
+Architecture: any
+Depends: ${shlibs:Depends}, ${python:Depends}, ${misc:Depends}, libyajl1 (< 2.0)
+Provides: ${python:Provides}
+Breaks: ${python:Breaks}
+Description: Ijson is a Python wrapper to YAJL which is a streaming SAX-like JSON parser.
+ Ijson provides a standard Python iterator interface for it.
