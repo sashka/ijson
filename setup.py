@@ -1,5 +1,5 @@
 # -*- coding:utf-8 -*-
-from distutils.core import setup
+from setuptools import setup
 
 setup(
     name = 'ijson',
@@ -11,4 +11,5 @@ setup(
     license = 'LICENSE.txt',
     description = 'A Python wrapper to YAJL providing standard iterator interface to streaming JSON parsing',
     long_description = open('README.rst').read(),
+    test_suite='tests',
 )
